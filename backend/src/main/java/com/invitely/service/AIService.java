@@ -41,7 +41,11 @@ public class AIService {
     @Value("${spring.ai.vertex.ai.gemini.location:us-central1}")
     private String location;
 
-    private static final String IMAGEN_MODEL = "imagen-3.0-generate-001";
+    @Value("${invitely.ai.image.scene-model:imagen-3.0-generate-001}")
+    private String sceneModel;
+
+    @Value("${invitely.ai.image.gemini-flash-image-model:gemini-2.5-flash-image-preview}")
+    private String geminiFlashImageModel;
 
     // Explicit constructor — avoids @RequiredArgsConstructor conflict with @Qualifier
     public AIService(
@@ -65,7 +69,7 @@ public class AIService {
 
     @Async
     @Transactional
-    public void generateInviteImage(UUID inviteId) {
+    public void generateInviteImage(UUID inviteId, boolean embedInvitationText) {
         Invitation invite = invitationRepository.findById(inviteId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Invitation not found: " + inviteId));
@@ -76,10 +80,12 @@ public class AIService {
         invitationRepository.save(invite);
 
         try {
-            String prompt = buildImagePrompt(invite);
+            String prompt = buildImagePrompt(invite, embedInvitationText);
             log.debug("Imagen prompt: {}", prompt);
 
-            String b64Image = callImagenApi(prompt);
+            String b64Image = embedInvitationText
+                    ? callGeminiFlashImageApi(prompt, geminiFlashImageModel)
+                    : callImagenApi(prompt, sceneModel);
 
             String imageUrl = assetService.storeBase64Image(
                     inviteId, b64Image, "image/png", AssetType.AI_GENERATED_IMAGE);
@@ -106,12 +112,12 @@ public class AIService {
     // -------------------------------------------------------
 
     @SuppressWarnings("unchecked")
-    private String callImagenApi(String prompt) throws IOException {
+    private String callImagenApi(String prompt, String model) throws IOException {
         googleCredentials.refreshIfExpired();
         String accessToken = googleCredentials.getAccessToken().getTokenValue();
 
         String url = "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:predict"
-                .formatted(location, projectId, location, IMAGEN_MODEL);
+                .formatted(location, projectId, location, model);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -147,6 +153,62 @@ public class AIService {
         }
 
         return b64;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String callGeminiFlashImageApi(String prompt, String model) throws IOException {
+        googleCredentials.refreshIfExpired();
+        String accessToken = googleCredentials.getAccessToken().getTokenValue();
+
+        String url = "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:generateContent"
+                .formatted(location, projectId, location, model);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(accessToken);
+
+        Map<String, Object> body = Map.of(
+                "contents", List.of(Map.of(
+                        "role", "user",
+                        "parts", List.of(Map.of("text", prompt))
+                )),
+                "generationConfig", Map.of(
+                        "responseModalities", List.of("IMAGE")
+                )
+        );
+
+        ResponseEntity<Map> response = vertexRestTemplate.postForEntity(
+                url, new HttpEntity<>(body, headers), Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("Empty response from Gemini Flash Image API");
+        }
+
+        List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) response.getBody().get("candidates");
+        if (candidates == null || candidates.isEmpty()) {
+            throw new RuntimeException("No candidates in Gemini Flash Image API response");
+        }
+
+        Map<String, Object> content = (Map<String, Object>) candidates.get(0).get("content");
+        if (content == null) throw new RuntimeException("Missing content in Gemini response");
+
+        List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
+        if (parts == null || parts.isEmpty()) {
+            throw new RuntimeException("No parts in Gemini response content");
+        }
+
+        for (Map<String, Object> part : parts) {
+            Map<String, Object> inlineData = (Map<String, Object>) part.get("inlineData");
+            if (inlineData != null) {
+                String b64 = (String) inlineData.get("data");
+                if (b64 != null && !b64.isBlank()) {
+                    return b64;
+                }
+            }
+        }
+
+        throw new RuntimeException("No inline image bytes returned by Gemini Flash Image API");
     }
 
     // -------------------------------------------------------
@@ -192,13 +254,34 @@ public class AIService {
     // Prompt engineering
     // -------------------------------------------------------
 
-    private String buildImagePrompt(Invitation invite) {
+    private String buildImagePrompt(Invitation invite, boolean embedInvitationText) {
         String scene = (invite.getScenePrompt() != null && !invite.getScenePrompt().isBlank())
                 ? invite.getScenePrompt()
                 : defaultSceneForEventType(invite.getEventType().name());
 
-        // Text overlay is handled by the frontend (CSS overlay)
-        // Asking Imagen to bake text is unreliable — clean scene gives better results
+        if (embedInvitationText) {
+            String overlayText = buildTextOverlay(invite);
+            return """
+                    %s.
+
+                    Create a printable invitation card layout with embedded text.
+                    Include the following invitation text exactly as written and preserve spelling:
+                    ---
+                    %s
+                    ---
+
+                    Style requirements:
+                    - Balanced composition with readable typography
+                    - Soft visual areas behind text for contrast
+                    - Beautiful invitation-quality illustration
+                    - Cinematic square composition (1:1)
+                    - Rich vibrant colors, warm and celebratory mood
+                    - High-quality painterly or photorealistic style
+                    - No watermarks, logos, or signatures
+                    """.formatted(scene, overlayText);
+        }
+
+        // Scene-only mode uses frontend text overlay for predictable readability
         return """
                 %s.
                 

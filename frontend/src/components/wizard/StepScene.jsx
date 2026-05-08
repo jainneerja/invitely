@@ -45,7 +45,7 @@ export default function StepScene() {
       })
 
       // Trigger async generation
-      await generateImage(createdInvite.id)
+      await generateImage(createdInvite.id, { embedInvitationText: form.embedInvitationText })
       toast('Generating your scene...', { icon: '✨' })
 
       // Poll until IMAGE_READY
@@ -138,6 +138,24 @@ export default function StepScene() {
             </div>
           </div>
 
+
+          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+            <button
+              className="btn"
+              style={{ fontSize: 12, padding: '5px 12px', background: form.embedInvitationText ? 'var(--purple)' : undefined, color: form.embedInvitationText ? '#fff' : undefined }}
+              onClick={() => setForm({ embedInvitationText: true })}
+            >
+              Embed text in image
+            </button>
+            <button
+              className="btn"
+              style={{ fontSize: 12, padding: '5px 12px', background: !form.embedInvitationText ? 'var(--purple)' : undefined, color: !form.embedInvitationText ? '#fff' : undefined }}
+              onClick={() => setForm({ embedInvitationText: false })}
+            >
+              Scene only + overlay text
+            </button>
+          </div>
+
           {/* Prompt suggestions */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
             {SUGGESTIONS.map((s) => (
@@ -163,7 +181,7 @@ export default function StepScene() {
             Generated image
           </h2>
           <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 14 }}>
-            Your invite text is baked into the scene by AI
+            Choose whether text should be embedded by AI or overlaid later
           </p>
 
           <div style={{

@@ -1,11 +1,13 @@
 package com.invitely.config;
 
-import org.springframework.ai.image.ImageModel;
-import org.springframework.ai.vertexai.gemini.VertexAiGeminiImageModel;
-import org.springframework.ai.vertexai.gemini.VertexAiGeminiImageOptions;
+import com.google.auth.oauth2.GoogleCredentials;
+import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+import java.io.IOException;
 
 @Configuration
 public class SpringAIConfig {
@@ -17,12 +19,22 @@ public class SpringAIConfig {
     private String location;
 
     @Bean
-    public VertexAiGeminiImageOptions geminiImageOptions() {
-        return VertexAiGeminiImageOptions.builder()
-                .withModel("imagen-3.0-generate-001")   // Imagen 3 via Vertex AI
-                .withN(1)
-                .withWidth(1024)
-                .withHeight(1024)
+    public GoogleCredentials googleCredentials() throws IOException {
+        return GoogleCredentials.getApplicationDefault()
+                .createScoped("https://www.googleapis.com/auth/cloud-platform");
+    }
+
+    @Bean(name = "vertexRestTemplate")
+    public RestTemplate vertexRestTemplate() {
+        return new RestTemplate();
+    }
+
+    @Bean
+    public VertexAiGeminiChatOptions geminiChatOptions() {
+        return VertexAiGeminiChatOptions.builder()
+                .model("gemini-2.0-flash")
+                .temperature(0.8)
+                .maxOutputTokens(200)
                 .build();
     }
 }

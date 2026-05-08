@@ -2,6 +2,14 @@ spring:
   application:
     name: invitely-backend
 
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 8
+        queue-capacity: 50
+      thread-name-prefix: invitely-async-
+
   # PostgreSQL
   datasource:
     url: jdbc:postgresql://localhost:5432/invitely
@@ -11,10 +19,10 @@ spring:
       maximum-pool-size: 10
       minimum-idle: 2
 
-  # JPA / Hibernate
+  # JPA
   jpa:
     hibernate:
-      ddl-auto: validate          # Flyway owns the schema — never let Hibernate touch it
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -27,54 +35,21 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # Kafka
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
-    producer:
-      key-serializer: org.apache.kafka.common.serialization.StringSerializer
-      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
-    consumer:
-      group-id: invitely-group
-      auto-offset-reset: earliest
-      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.packages: "com.invitely.*"
-
   # Spring AI — Vertex AI Gemini
   ai:
     vertex:
       ai:
         gemini:
-          project-id: ${GOOGLE_CLOUD_PROJECT_ID}
+          project-id: ${GOOGLE_CLOUD_PROJECT_ID:invitely-495718}
           location: us-central1
           chat:
             options:
-              model: gemini-2.5-flash-image-preview   # Nano Banana
+              model: gemini-2.0-flash
               temperature: 0.8
-
-# AWS S3 for asset storage
-aws:
-  s3:
-    bucket: ${AWS_S3_BUCKET:invitely-assets-local}
-    region: ${AWS_REGION:us-east-1}
-    access-key: ${AWS_ACCESS_KEY:local}
-    secret-key: ${AWS_SECRET_KEY:local}
-    endpoint: ${AWS_S3_ENDPOINT:}    # override for local MinIO
-
-# Video generation — pluggable provider
-video:
-  provider: ${VIDEO_PROVIDER:stub}   # stub | kling | runway
-  kling:
-    api-key: ${KLING_API_KEY:}
-    base-url: https://api.kling.ai/v1
-  runway:
-    api-key: ${RUNWAY_API_KEY:}
-    base-url: https://api.runwayml.com/v1
 
 # App config
 invitely:
-  base-url: ${APP_BASE_URL:http://localhost:3000}
+  base-url: ${APP_BASE_URL:http://localhost:8080}
   slug-length: 8
   notifications:
     email:
@@ -88,13 +63,3 @@ logging:
   level:
     com.invitely: DEBUG
     org.springframework.ai: INFO
-
-# Async executor — for @Async image + video generation jobs
-spring:
-  task:
-    execution:
-      pool:
-        core-size: 4
-        max-size: 8
-        queue-capacity: 50
-      thread-name-prefix: invitely-async-

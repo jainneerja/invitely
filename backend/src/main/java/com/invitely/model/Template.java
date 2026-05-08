@@ -3,7 +3,10 @@ package com.invitely.model;
 import io.hypersistence.utils.hibernate.type.json.JsonBinaryType;
 import jakarta.persistence.*;
 import lombok.*;
+
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.Type;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.Map;
@@ -29,6 +32,7 @@ public class Template {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "event_type", columnDefinition = "event_type")
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     private Invitation.EventType eventType;   // null = universal
 
     // JSONB column — stores the full template config as a Map

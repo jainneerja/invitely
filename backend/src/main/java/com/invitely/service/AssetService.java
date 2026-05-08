@@ -4,35 +4,56 @@ import com.invitely.model.Asset;
 import com.invitely.model.Asset.AssetType;
 import com.invitely.model.Invitation;
 import com.invitely.repository.InvitationRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class AssetService {
 
-    private final S3Client s3Client;
     private final InvitationRepository invitationRepository;
 
-    @Value("${aws.s3.bucket}")
-    private String bucket;
+    @Nullable
+    private final S3Client s3Client;   // null when dev profile active
 
-    @Value("${aws.s3.region}")
-    private String region;
+    @Value("${invitely.base-url}")
+    private String baseUrl;
+
+    @Value("${invitely.asset-storage-path:uploads}")
+    private String storagePath;
+
+    @Value("${aws.s3.bucket:invitely-dev-local}")
+    private String s3Bucket;
+
+    @Value("${aws.s3.region:us-east-1}")
+    private String s3Region;
+
+    // S3Client is optional — null when dev profile (local file storage)
+    @Autowired
+    public AssetService(InvitationRepository invitationRepository,
+                        @Nullable S3Client s3Client) {
+        this.invitationRepository = invitationRepository;
+        this.s3Client = s3Client;
+    }
 
     // -------------------------------------------------------
-    // Store base64 image from Gemini → S3
+    // Store AI-generated image
+    // Uses S3 in prod, local filesystem in dev
     // -------------------------------------------------------
 
     @Transactional
@@ -43,21 +64,40 @@ public class AssetService {
                         "Invitation not found: " + inviteId));
 
         byte[] imageBytes = Base64.getDecoder().decode(base64Data);
-        String extension = mimeType.contains("png") ? "png" : "jpg";
-        String fileKey = "invites/%s/ai-image-%s.%s"
-                .formatted(inviteId, UUID.randomUUID(), extension);
+        String extension  = mimeType.contains("png") ? "png" : "jpg";
+        String fileName   = "ai-image-" + UUID.randomUUID() + "." + extension;
+        String fileKey    = "invites/" + inviteId + "/" + fileName;
 
-        // Upload to S3
-        s3Client.putObject(
-                PutObjectRequest.builder()
-                        .bucket(bucket)
-                        .key(fileKey)
-                        .contentType(mimeType)
-                        .contentLength((long) imageBytes.length)
-                        .build(),
-                RequestBody.fromBytes(imageBytes));
+        String publicUrl;
 
-        String publicUrl = buildPublicUrl(fileKey);
+        if (s3Client != null) {
+            // --- PROD: upload to S3 ---
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(s3Bucket)
+                            .key(fileKey)
+                            .contentType(mimeType)
+                            .contentLength((long) imageBytes.length)
+                            .build(),
+                    RequestBody.fromBytes(imageBytes));
+
+            publicUrl = "https://%s.s3.%s.amazonaws.com/%s"
+                    .formatted(s3Bucket, s3Region, fileKey);
+            log.info("Image uploaded to S3. invite={} key={}", inviteId, fileKey);
+
+        } else {
+            // --- DEV: save to local filesystem ---
+            try {
+                Path uploadDir = Paths.get(storagePath, "invites", inviteId.toString());
+                Files.createDirectories(uploadDir);
+                Files.write(uploadDir.resolve(fileName), imageBytes);
+                publicUrl = baseUrl + "/uploads/" + fileKey;
+                log.info("Image saved locally. invite={} path={}", inviteId,
+                        uploadDir.resolve(fileName));
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save image locally: " + e.getMessage(), e);
+            }
+        }
 
         // Persist asset record
         Asset asset = Asset.builder()
@@ -72,7 +112,6 @@ public class AssetService {
         invite.getAssets().add(asset);
         invitationRepository.save(invite);
 
-        log.info("Stored AI image asset. invite={} key={}", inviteId, fileKey);
         return publicUrl;
     }
 
@@ -89,7 +128,7 @@ public class AssetService {
         Asset asset = Asset.builder()
                 .invitation(invite)
                 .assetType(assetType)
-                .fileKey(videoUrl)   // external URL as key
+                .fileKey(videoUrl)
                 .url(videoUrl)
                 .mimeType("video/mp4")
                 .build();
@@ -97,15 +136,6 @@ public class AssetService {
         invite.getAssets().add(asset);
         invitationRepository.save(invite);
 
-        log.info("Stored video asset reference. invite={} url={}", inviteId, videoUrl);
-    }
-
-    // -------------------------------------------------------
-    // Build public S3 URL
-    // -------------------------------------------------------
-
-    private String buildPublicUrl(String fileKey) {
-        return "https://%s.s3.%s.amazonaws.com/%s"
-                .formatted(bucket, region, fileKey);
+        log.info("Stored video asset. invite={} url={}", inviteId, videoUrl);
     }
 }

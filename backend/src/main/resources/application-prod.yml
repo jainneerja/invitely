@@ -1,0 +1,52 @@
+# -------------------------------------------------------
+# PROD profile — real cloud services
+# Run with: mvn spring-boot:run -Dspring-boot.run.profiles=prod
+# Or set env var: SPRING_PROFILES_ACTIVE=prod
+# -------------------------------------------------------
+
+# App base URL
+invitely:
+  base-url: ${APP_BASE_URL}
+  asset-storage-path: /var/invitely/uploads
+
+# Kafka enabled in prod
+kafka:
+  enabled: true
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: invitely-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.invitely.*"
+
+# AWS S3 — real credentials required
+aws:
+  s3:
+    bucket: ${AWS_S3_BUCKET}
+    region: ${AWS_REGION}
+    access-key: ${AWS_ACCESS_KEY}
+    secret-key: ${AWS_SECRET_KEY}
+    endpoint:
+
+# Video — real provider in prod
+video:
+  provider: ${VIDEO_PROVIDER:kling}
+  kling:
+    api-key: ${KLING_API_KEY}
+    base-url: https://api.kling.ai/v1
+  runway:
+    api-key: ${RUNWAY_API_KEY:}
+    base-url: https://api.runwayml.com/v1
+
+logging:
+  level:
+    com.invitely: INFO
+    org.springframework.ai: WARN

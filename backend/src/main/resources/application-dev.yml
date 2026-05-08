@@ -1,0 +1,36 @@
+# -------------------------------------------------------
+# DEV profile — runs fully locally, no cloud services needed
+# Run with: mvn spring-boot:run -Dspring-boot.run.profiles=dev
+# -------------------------------------------------------
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+
+# Local file storage — images saved to uploads/ folder
+invitely:
+  base-url: http://localhost:3000
+  asset-storage-path: D:/Project/invitely/backend/uploads
+
+# Kafka disabled in dev
+kafka:
+  enabled: false
+
+# AWS — disabled, using local storage
+aws:
+  s3:
+    bucket: invitely-dev-local
+    region: us-east-1
+    access-key: local
+    secret-key: local
+    endpoint:
+
+# Video — stub provider in dev (no real API calls)
+video:
+  provider: stub
+
+logging:
+  level:
+    com.invitely: DEBUG
+    org.springframework.web: DEBUG

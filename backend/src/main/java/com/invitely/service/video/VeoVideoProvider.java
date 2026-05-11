@@ -10,6 +10,9 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +50,11 @@ public class VeoVideoProvider implements VideoGenerationProvider {
 
     @Value("${invitely.ai.video.duration-seconds:6}")
     private int defaultDurationSeconds;
+n    @Value("${invitely.base-url}")
+    private String appBaseUrl;
+
+    @Value("${invitely.asset-storage-path:uploads}")
+    private String storagePath;
 
     public VeoVideoProvider(GoogleCredentials googleCredentials, AssetService assetService) {
         this.googleCredentials = googleCredentials;
@@ -155,6 +163,22 @@ public class VeoVideoProvider implements VideoGenerationProvider {
     }
 
     private byte[] downloadImage(String imageUrl) {
+        // Dev: images are stored locally — read from disk directly to avoid
+        // port mismatch (base-url may point to the frontend; uploads are on the backend).
+        // Prod: images are on S3 — fall through to HTTP download.
+        if (imageUrl.contains("/uploads/")) {
+            String afterUploads = imageUrl.substring(imageUrl.indexOf("/uploads/") + "/uploads/".length());
+            Path localFile = Paths.get(storagePath, afterUploads);
+            if (java.nio.file.Files.exists(localFile)) {
+                try {
+                    log.debug("[VEO] Reading image from disk: {}", localFile);
+                    return Files.readAllBytes(localFile);
+                } catch (IOException e) {
+                    throw new RuntimeException("[VEO] Failed to read local image: " + localFile, e);
+                }
+            }
+        }
+        // S3 or other external URL
         try {
             ResponseEntity<byte[]> response = restTemplate.getForEntity(imageUrl, byte[].class);
             if (response.getBody() == null || response.getBody().length == 0) {

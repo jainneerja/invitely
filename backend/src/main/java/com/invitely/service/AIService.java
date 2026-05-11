@@ -260,56 +260,124 @@ public class AIService {
                 : defaultSceneForEventType(invite.getEventType().name());
 
         if (embedInvitationText) {
-            String overlayText = buildTextOverlay(invite);
-            return """
-                    %s.
-
-                    Create a printable invitation card layout with embedded text.
-                    Include the following invitation text exactly as written and preserve spelling:
-                    ---
-                    %s
-                    ---
-
-                    Style requirements:
-                    - Balanced composition with readable typography
-                    - Soft visual areas behind text for contrast
-                    - Beautiful invitation-quality illustration
-                    - Cinematic square composition (1:1)
-                    - Rich vibrant colors, warm and celebratory mood
-                    - High-quality painterly or photorealistic style
-                    - No watermarks, logos, or signatures
-                    """.formatted(scene, overlayText);
+            return buildEmbeddedCardPrompt(invite, scene);
         }
 
-        // Scene-only mode uses frontend text overlay for predictable readability
         return """
                 %s.
-                
+
                 Style requirements:
                 - Beautiful invitation-quality illustration
                 - Cinematic square composition (1:1)
                 - Rich vibrant colors, warm and celebratory mood
-                - Leave some visual breathing room (sky, ground, or soft area)
-                  that can serve as a backdrop for text overlay
+                - Leave ample visual breathing room in the lower third
+                  that can serve as a soft backdrop for text overlay
                 - High-quality painterly or photorealistic style
                 - No text, watermarks, logos, or signatures
                 """.formatted(scene);
     }
 
-    private String buildTextOverlay(Invitation invite) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(invite.getEventTitle()).append("\n");
-        if (invite.getHostName() != null)
-            sb.append("Hosted by ").append(invite.getHostName()).append("\n");
-        if (invite.getEventDate() != null)
-            sb.append(invite.getEventDate()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy")));
-        if (invite.getEventTime() != null)
-            sb.append(" at ").append(invite.getEventTime()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))).append("\n");
-        if (invite.getVenueName() != null)
-            sb.append(invite.getVenueName());
-        return sb.toString().trim();
+    private String buildEmbeddedCardPrompt(Invitation invite, String scene) {
+        String eventType = invite.getEventType().name();
+
+        StringBuilder detailLines = new StringBuilder();
+        if (invite.getEventDate() != null) {
+            detailLines.append("\uD83D\uDCC5 ")
+                    .append(invite.getEventDate()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy")))
+                    .append("\n");
+        }
+        if (invite.getEventTime() != null) {
+            detailLines.append("\uD83D\uDD50 ")
+                    .append(invite.getEventTime()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")))
+                    .append("\n");
+        }
+        if (invite.getVenueName() != null && !invite.getVenueName().isBlank()) {
+            detailLines.append("\uD83D\uDCCD ").append(invite.getVenueName());
+            if (invite.getVenueAddress() != null && !invite.getVenueAddress().isBlank()) {
+                detailLines.append(", ").append(invite.getVenueAddress());
+            }
+            detailLines.append("\n");
+        }
+
+        String hostLine = (invite.getHostName() != null && !invite.getHostName().isBlank())
+                ? "Hosted by " + invite.getHostName()
+                : "";
+
+        String personalNote = (invite.getPersonalMessage() != null && !invite.getPersonalMessage().isBlank())
+                ? "\n\u201C" + invite.getPersonalMessage() + "\u201D"
+                : "";
+
+        String thematic = thematicElementsForEventType(eventType);
+        String styleGuide = styleGuideForEventType(eventType);
+
+        return """
+                Create a stunning, high-resolution printable invitation card in a perfect square (1:1) format.
+
+                VISUAL THEME:
+                %s. %s
+
+                CARD LAYOUT — three clearly defined regions:
+
+                TOP SECTION (top 25%% of card):
+                  - Decorative ribbon banner, floral arch, or themed frame along the top edge
+                  - Event title "%s" in large, bold, elegant display font — centered, highly legible
+                  - "%s" in a smaller graceful subtitle font directly below the title
+
+                CENTER ILLUSTRATION (middle 40%% of card):
+                  - Rich, detailed thematic scene: %s
+                  - Colorful balloons and celebratory confetti or petals woven naturally into the scene
+                  - Soft semi-transparent frosted panel in the lower portion of this zone
+                    to ensure the text below reads cleanly against the illustration
+
+                EVENT DETAILS PANEL (bottom 35%% of card):
+                  - Clean, well-spaced text rendered in crisp, legible fonts:
+                %s%s
+                  - Calendar, clock, and location-pin icons before each detail line
+                  - Title text in elegant serif font; values in clean modern sans-serif
+                  - Generous line spacing so details never feel cramped
+
+                OVERALL STYLE:
+                %s
+                - Warm celebratory color palette — rich jewel tones with soft pastel accents
+                - High-quality painterly or illustrated style, invitation-card quality
+                - Clean balanced layout with generous whitespace between sections
+                - No watermarks, logos, photographer credits, or extra signatures
+                """.formatted(
+                scene,
+                thematic,
+                invite.getEventTitle(),
+                hostLine,
+                thematic,
+                detailLines.toString().trim(),
+                personalNote,
+                styleGuide
+        );
+    }
+
+    private String thematicElementsForEventType(String eventType) {
+        return switch (eventType) {
+            case "BIRTHDAY"    -> "Adorable themed characters (jungle animals, cartoon figures, or fantasy creatures matching the scene) wearing party hats; colorful number centerpiece";
+            case "WEDDING"     -> "Romantic floral garlands, dove pair, intertwined rings, rose petals cascading down the sides";
+            case "PARTY"       -> "Vibrant streamers, party poppers, disco ball reflection, confetti burst in celebratory colors";
+            case "BABY_SHOWER" -> "Gentle baby animals (ducks, bunnies, elephants), soft pastel stars, tiny baby footprints, pram silhouette";
+            case "GRADUATION"  -> "Graduation cap and diploma scroll, laurel wreath, golden stars, confetti in school colors";
+            case "CORPORATE"   -> "Sleek geometric accents, subtle gold lines, modern abstract shapes, professional emblem";
+            default            -> "Festive decorative borders, colorful floral accents, celebratory ribbons";
+        };
+    }
+
+    private String styleGuideForEventType(String eventType) {
+        return switch (eventType) {
+            case "BIRTHDAY"    -> "- Bright, playful color palette; kid-friendly illustrations with soft outlines and warm tones";
+            case "WEDDING"     -> "- Soft romantic palette (ivory, blush, gold); elegant watercolor or fine-art illustration style";
+            case "PARTY"       -> "- Bold vibrant colors; energetic modern illustration with dynamic composition";
+            case "BABY_SHOWER" -> "- Soft pastel palette (mint, lavender, peach); gentle watercolor with whimsical linework";
+            case "GRADUATION"  -> "- Optimistic palette (navy, gold, white); clean sharp illustration with a sense of achievement";
+            case "CORPORATE"   -> "- Sophisticated palette (deep blue, charcoal, gold); polished semi-realistic or flat design style";
+            default            -> "- Warm celebratory palette; high-quality painterly style";
+        };
     }
 
     private String defaultSceneForEventType(String eventType) {

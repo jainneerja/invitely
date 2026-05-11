@@ -44,7 +44,7 @@ public class AIService {
     @Value("${invitely.ai.image.scene-model:imagen-3.0-generate-001}")
     private String sceneModel;
 
-    @Value("${invitely.ai.image.gemini-flash-image-model:gemini-2.5-flash-image-preview}")
+    @Value("${invitely.ai.image.gemini-flash-image-model:gemini-3.1-flash-image-preview}")
     private String geminiFlashImageModel;
 
     // Explicit constructor — avoids @RequiredArgsConstructor conflict with @Qualifier
@@ -173,7 +173,7 @@ public class AIService {
                         "parts", List.of(Map.of("text", prompt))
                 )),
                 "generationConfig", Map.of(
-                        "responseModalities", List.of("IMAGE")
+                        "responseModalities", List.of("TEXT", "IMAGE")
                 )
         );
 

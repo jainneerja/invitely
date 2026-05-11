@@ -29,7 +29,7 @@ public class StubVideoProvider implements VideoGenerationProvider {
     }
 
     @Override
-    public String pollJobResult(String jobId) {
+    public String pollJobResult(String jobId, java.util.UUID inviteId) {
         log.info("[STUB] Polling job={} — returning sample video", jobId);
         // Simulate processing delay in a real scenario;
         // stub always returns immediately for dev speed

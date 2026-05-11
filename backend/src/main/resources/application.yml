@@ -67,3 +67,13 @@ logging:
   level:
     com.invitely: DEBUG
     org.springframework.ai: INFO
+
+# Video generation
+video:
+  provider: ${VIDEO_PROVIDER:veo}   # veo | kling | stub
+
+invitely:
+  ai:
+    video:
+      veo-model: ${INVITELY_VEO_MODEL:veo-3.0-generate-preview}
+      duration-seconds: ${INVITELY_VIDEO_DURATION:6}

@@ -77,7 +77,7 @@ public class KlingVideoProvider implements VideoGenerationProvider {
     }
 
     @Override
-    public String pollJobResult(String jobId) {
+    public String pollJobResult(String jobId, java.util.UUID inviteId) {
         log.debug("[KLING] Polling jobId={}", jobId);
 
         HttpHeaders headers = buildHeaders();

@@ -58,7 +58,7 @@ invitely:
   ai:
     image:
       scene-model: ${INVITELY_SCENE_IMAGE_MODEL:imagen-3.0-generate-001}
-      gemini-flash-image-model: ${INVITELY_GEMINI_FLASH_IMAGE_MODEL:gemini-3.1-flash-image-preview}
+      gemini-flash-image-model: ${INVITELY_GEMINI_FLASH_IMAGE_MODEL:gemini-2.5-flash-image}
 
 server:
   port: 8080

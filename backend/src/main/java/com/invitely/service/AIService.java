@@ -91,6 +91,7 @@ public class AIService {
                     inviteId, b64Image, "image/png", AssetType.AI_GENERATED_IMAGE);
 
             invite.setGeneratedImageUrl(imageUrl);
+            invite.setEmbedTextInImage(embedInvitationText);
             invite.setStatus(InviteStatus.IMAGE_READY);
             invitationRepository.save(invite);
 

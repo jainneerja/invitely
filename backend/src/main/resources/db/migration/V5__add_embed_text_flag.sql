@@ -1,0 +1,2 @@
+ALTER TABLE invitations
+    ADD COLUMN IF NOT EXISTS embed_text_in_image BOOLEAN NOT NULL DEFAULT FALSE;

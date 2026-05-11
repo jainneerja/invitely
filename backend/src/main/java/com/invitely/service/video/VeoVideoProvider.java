@@ -50,7 +50,7 @@ public class VeoVideoProvider implements VideoGenerationProvider {
 
     @Value("${invitely.ai.video.duration-seconds:6}")
     private int defaultDurationSeconds;
-n    @Value("${invitely.base-url}")
+    @Value("${invitely.base-url}")
     private String appBaseUrl;
 
     @Value("${invitely.asset-storage-path:uploads}")

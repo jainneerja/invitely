@@ -1,5 +1,7 @@
 package com.invitely.service.video;
 
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -7,130 +9,118 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
+import java.util.Date;
+import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
- * Kling AI video generation provider.
+ * Kling AI video generation provider (image-to-video).
  * Activated when video.provider=kling in application.yml.
  *
- * Kling API docs: https://api.kling.ai/docs
- * Specialises in image-to-video with natural language motion prompts —
- * ideal for "make animals walk, leaves sway" style instructions.
+ * Auth: Kling uses JWT signed with AccessKey/SecretKey — NOT a plain bearer token.
+ * JWT payload: iss=accessKey, exp=now+30min, nbf=now-5s
  */
 @Component
 @ConditionalOnProperty(name = "video.provider", havingValue = "kling")
 @Slf4j
 public class KlingVideoProvider implements VideoGenerationProvider {
 
-    private final RestTemplate restTemplate;
-    private final String apiKey;
-    private final String baseUrl;
+    private final RestTemplate restTemplate = new RestTemplate();
 
-    public KlingVideoProvider(
-            @Value("${video.kling.api-key}") String apiKey,
-            @Value("${video.kling.base-url}") String baseUrl) {
-        this.apiKey = apiKey;
-        this.baseUrl = baseUrl;
-        this.restTemplate = new RestTemplate();
-    }
+    @Value("${video.kling.access-key}")
+    private String accessKey;
+
+    @Value("${video.kling.secret-key}")
+    private String secretKey;
+
+    @Value("${video.kling.base-url:https://api.kling.ai}")
+    private String baseUrl;
 
     @Override
-    public String submitAnimationJob(String imageUrl,
-                                     String animationPrompt,
-                                     int durationSeconds) {
-        log.info("[KLING] Submitting animation job. imageUrl={}", imageUrl);
-
-        HttpHeaders headers = buildHeaders();
+    @SuppressWarnings("unchecked")
+    public String submitAnimationJob(String imageUrl, String animationPrompt, int durationSeconds) {
+        log.info("[KLING] Submitting I2V job. imageUrl={}", imageUrl);
 
         Map<String, Object> body = Map.of(
-                "model", "kling-v1",
+                "model", "kling-v2-master",
                 "image_url", imageUrl,
                 "prompt", animationPrompt,
                 "duration", durationSeconds,
-                "cfg_scale", 0.5,       // creativity vs prompt adherence
-                "mode", "standard"
+                "cfg_scale", 0.5,
+                "mode", "std",
+                "aspect_ratio", "1:1"
         );
 
-        HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(
+                baseUrl + "/v1/videos/image2video",
+                new HttpEntity<>(body, authHeaders()),
+                Map.class);
 
-        try {
-            ResponseEntity<Map> response = restTemplate.postForEntity(
-                    baseUrl + "/videos/image2video",
-                    request,
-                    Map.class);
+        Map<String, Object> data = extractData(response, "submit");
+        String taskId = (String) data.get("task_id");
+        log.info("[KLING] Job submitted. taskId={}", taskId);
+        return taskId;
+    }
 
-            Map<String, Object> responseBody = response.getBody();
-            if (responseBody == null) {
-                throw new RuntimeException("Empty response from Kling API");
+    @Override
+    @SuppressWarnings("unchecked")
+    public String pollJobResult(String jobId, UUID inviteId) {
+        log.debug("[KLING] Polling taskId={}", jobId);
+
+        ResponseEntity<Map> response = restTemplate.exchange(
+                baseUrl + "/v1/videos/image2video/" + jobId,
+                HttpMethod.GET,
+                new HttpEntity<>(authHeaders()),
+                Map.class);
+
+        Map<String, Object> data = extractData(response, "poll");
+        String status = (String) data.get("task_status");
+
+        return switch (status) {
+            case "succeed" -> {
+                var result = (Map<String, Object>) data.get("task_result");
+                if (result == null) yield null;
+                var videos = (List<Map<String, Object>>) result.get("videos");
+                if (videos == null || videos.isEmpty()) yield null;
+                yield (String) videos.get(0).get("url");
             }
-
-            // Kling returns { data: { task_id: "..." } }
-            Map<String, Object> data = (Map<String, Object>) responseBody.get("data");
-            String taskId = (String) data.get("task_id");
-            log.info("[KLING] Job submitted. taskId={}", taskId);
-            return taskId;
-
-        } catch (Exception e) {
-            log.error("[KLING] Failed to submit job", e);
-            throw new RuntimeException("Kling API error: " + e.getMessage(), e);
-        }
+            case "failed" -> throw new RuntimeException(
+                    "[KLING] Job failed: " + data.get("task_status_msg"));
+            default -> null;  // processing
+        };
     }
 
     @Override
-    public String pollJobResult(String jobId, java.util.UUID inviteId) {
-        log.debug("[KLING] Polling jobId={}", jobId);
+    public String providerName() { return "kling"; }
 
-        HttpHeaders headers = buildHeaders();
-        HttpEntity<Void> request = new HttpEntity<>(headers);
-
-        try {
-            ResponseEntity<Map> response = restTemplate.exchange(
-                    baseUrl + "/videos/image2video/" + jobId,
-                    HttpMethod.GET,
-                    request,
-                    Map.class);
-
-            Map<String, Object> body = response.getBody();
-            if (body == null) return null;
-
-            Map<String, Object> data = (Map<String, Object>) body.get("data");
-            String status = (String) data.get("task_status");
-
-            return switch (status) {
-                case "succeed" -> {
-                    // Extract video URL from works array
-                    var works = (java.util.List<Map<String, Object>>) data.get("task_result");
-                    if (works != null && !works.isEmpty()) {
-                        var videos = (java.util.List<Map<String, Object>>)
-                                works.get(0).get("videos");
-                        if (videos != null && !videos.isEmpty()) {
-                            yield (String) videos.get(0).get("url");
-                        }
-                    }
-                    yield null;
-                }
-                case "failed" -> throw new RuntimeException(
-                        "Kling job failed: " + data.get("task_status_msg"));
-                default -> null;   // still processing
-            };
-
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("[KLING] Polling error for jobId={}", jobId, e);
-            return null;
-        }
-    }
-
-    @Override
-    public String providerName() {
-        return "kling";
-    }
-
-    private HttpHeaders buildHeaders() {
+    private HttpHeaders authHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.setBearerAuth(apiKey);
+        headers.setBearerAuth(generateJwt());
         return headers;
+    }
+
+    private String generateJwt() {
+        long nowMs = System.currentTimeMillis();
+        SecretKey key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
+        return Jwts.builder()
+                .header().add("typ", "JWT").and()
+                .issuer(accessKey)
+                .issuedAt(new Date(nowMs))
+                .notBefore(new Date(nowMs - 5_000))
+                .expiration(new Date(nowMs + 1_800_000))  // 30 min
+                .signWith(key)
+                .compact();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractData(ResponseEntity<Map> response, String ctx) {
+        if (response.getBody() == null) throw new RuntimeException("[KLING] Empty response (" + ctx + ")");
+        Map<String, Object> data = (Map<String, Object>) response.getBody().get("data");
+        if (data == null) throw new RuntimeException("[KLING] No data in response (" + ctx + ")");
+        return data;
     }
 }

@@ -33,6 +33,7 @@ public class InviteResponse {
     private String generatedImageUrl;
     private String animatedVideoUrl;
     private String animationStyle;
+    private Boolean embedTextInImage;
 
     // config
     private InviteStatus status;

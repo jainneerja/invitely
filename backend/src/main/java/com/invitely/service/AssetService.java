@@ -138,4 +138,61 @@ public class AssetService {
 
         log.info("Stored video asset. invite={} url={}", inviteId, videoUrl);
     }
+
+    // -------------------------------------------------------
+    // Store AI-generated video (base64 → local file or S3)
+    // -------------------------------------------------------
+
+    @Transactional
+    public String storeBase64Video(UUID inviteId, String base64Data, String mimeType) {
+        Invitation invite = invitationRepository.findById(inviteId)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "Invitation not found: " + inviteId));
+
+        byte[] videoBytes = Base64.getDecoder().decode(base64Data);
+        String fileName   = "ai-video-" + UUID.randomUUID() + ".mp4";
+        String fileKey    = "invites/" + inviteId + "/" + fileName;
+
+        String publicUrl;
+
+        if (s3Client != null) {
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(s3Bucket)
+                            .key(fileKey)
+                            .contentType(mimeType)
+                            .contentLength((long) videoBytes.length)
+                            .build(),
+                    RequestBody.fromBytes(videoBytes));
+
+            publicUrl = "https://%s.s3.%s.amazonaws.com/%s"
+                    .formatted(s3Bucket, s3Region, fileKey);
+            log.info("Video uploaded to S3. invite={} key={}", inviteId, fileKey);
+        } else {
+            try {
+                Path uploadDir = Paths.get(storagePath, "invites", inviteId.toString());
+                Files.createDirectories(uploadDir);
+                Files.write(uploadDir.resolve(fileName), videoBytes);
+                publicUrl = baseUrl + "/uploads/" + fileKey;
+                log.info("Video saved locally. invite={} path={}", inviteId,
+                        uploadDir.resolve(fileName));
+            } catch (IOException e) {
+                throw new RuntimeException("Failed to save video locally: " + e.getMessage(), e);
+            }
+        }
+
+        Asset asset = Asset.builder()
+                .invitation(invite)
+                .assetType(AssetType.AI_ANIMATED_VIDEO)
+                .fileKey(fileKey)
+                .url(publicUrl)
+                .mimeType(mimeType)
+                .sizeBytes((long) videoBytes.length)
+                .build();
+
+        invite.getAssets().add(asset);
+        invitationRepository.save(invite);
+
+        return publicUrl;
+    }
 }

@@ -1,20 +1,16 @@
 package com.invitely.service.video;
 
-/**
- * Pluggable video generation contract.
- * Swap providers by changing video.provider in application.yml
- * without touching any other code.
- */
+import java.util.UUID;
+
 public interface VideoGenerationProvider {
 
     /**
      * Submit an image for animation.
      *
      * @param imageUrl        publicly accessible URL of the source image
-     * @param animationPrompt natural language instruction e.g.
-     *                        "make the animals walk, leaves sway gently"
+     * @param animationPrompt natural language instruction
      * @param durationSeconds target video length (typically 4–8 seconds)
-     * @return job ID to poll for completion
+     * @return provider-specific job/operation ID to poll
      */
     String submitAnimationJob(String imageUrl,
                               String animationPrompt,
@@ -23,12 +19,12 @@ public interface VideoGenerationProvider {
     /**
      * Poll job status.
      *
-     * @return video URL when complete, null if still processing
+     * @param jobId    provider job/operation ID from submitAnimationJob
+     * @param inviteId invitation UUID — providers that return base64 video use
+     *                 this to store the asset and return a public URL
+     * @return public video URL when complete, null if still processing
      */
-    String pollJobResult(String jobId);
+    String pollJobResult(String jobId, UUID inviteId);
 
-    /**
-     * Human-readable provider name for logging.
-     */
     String providerName();
 }

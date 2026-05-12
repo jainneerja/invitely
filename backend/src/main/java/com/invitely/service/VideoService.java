@@ -145,7 +145,7 @@ public class VideoService {
             log.debug("[VIDEO] Poll attempt={} jobId={} invite={}",
                     attempt, jobId, inviteId);
 
-            String result = videoProvider.pollJobResult(jobId);
+            String result = videoProvider.pollJobResult(jobId, inviteId);
             if (result != null) {
                 return result;
             }

@@ -41,7 +41,11 @@ public class AIService {
     @Value("${spring.ai.vertex.ai.gemini.location:us-central1}")
     private String location;
 
-    private static final String IMAGEN_MODEL = "imagen-3.0-generate-001";
+    @Value("${invitely.ai.image.scene-model:imagen-3.0-generate-001}")
+    private String sceneModel;
+
+    @Value("${invitely.ai.image.gemini-flash-image-model:gemini-2.5-flash-image}")
+    private String geminiFlashImageModel;
 
     // Explicit constructor — avoids @RequiredArgsConstructor conflict with @Qualifier
     public AIService(
@@ -65,7 +69,7 @@ public class AIService {
 
     @Async
     @Transactional
-    public void generateInviteImage(UUID inviteId) {
+    public void generateInviteImage(UUID inviteId, boolean embedInvitationText) {
         Invitation invite = invitationRepository.findById(inviteId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Invitation not found: " + inviteId));
@@ -76,15 +80,18 @@ public class AIService {
         invitationRepository.save(invite);
 
         try {
-            String prompt = buildImagePrompt(invite);
+            String prompt = buildImagePrompt(invite, embedInvitationText);
             log.debug("Imagen prompt: {}", prompt);
 
-            String b64Image = callImagenApi(prompt);
+            String b64Image = embedInvitationText
+                    ? callGeminiFlashImageApi(prompt, geminiFlashImageModel)
+                    : callImagenApi(prompt, sceneModel);
 
             String imageUrl = assetService.storeBase64Image(
                     inviteId, b64Image, "image/png", AssetType.AI_GENERATED_IMAGE);
 
             invite.setGeneratedImageUrl(imageUrl);
+            invite.setEmbedTextInImage(embedInvitationText);
             invite.setStatus(InviteStatus.IMAGE_READY);
             invitationRepository.save(invite);
 
@@ -106,12 +113,12 @@ public class AIService {
     // -------------------------------------------------------
 
     @SuppressWarnings("unchecked")
-    private String callImagenApi(String prompt) throws IOException {
+    private String callImagenApi(String prompt, String model) throws IOException {
         googleCredentials.refreshIfExpired();
         String accessToken = googleCredentials.getAccessToken().getTokenValue();
 
         String url = "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:predict"
-                .formatted(location, projectId, location, IMAGEN_MODEL);
+                .formatted(location, projectId, location, model);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -147,6 +154,62 @@ public class AIService {
         }
 
         return b64;
+    }
+
+    @SuppressWarnings("unchecked")
+    private String callGeminiFlashImageApi(String prompt, String model) throws IOException {
+        googleCredentials.refreshIfExpired();
+        String accessToken = googleCredentials.getAccessToken().getTokenValue();
+
+        String url = "https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:generateContent"
+                .formatted(location, projectId, location, model);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(accessToken);
+
+        Map<String, Object> body = Map.of(
+                "contents", List.of(Map.of(
+                        "role", "user",
+                        "parts", List.of(Map.of("text", prompt))
+                )),
+                "generationConfig", Map.of(
+                        "responseModalities", List.of("TEXT", "IMAGE")
+                )
+        );
+
+        ResponseEntity<Map> response = vertexRestTemplate.postForEntity(
+                url, new HttpEntity<>(body, headers), Map.class);
+
+        if (response.getBody() == null) {
+            throw new RuntimeException("Empty response from Gemini Flash Image API");
+        }
+
+        List<Map<String, Object>> candidates =
+                (List<Map<String, Object>>) response.getBody().get("candidates");
+        if (candidates == null || candidates.isEmpty()) {
+            throw new RuntimeException("No candidates in Gemini Flash Image API response");
+        }
+
+        Map<String, Object> content = (Map<String, Object>) candidates.get(0).get("content");
+        if (content == null) throw new RuntimeException("Missing content in Gemini response");
+
+        List<Map<String, Object>> parts = (List<Map<String, Object>>) content.get("parts");
+        if (parts == null || parts.isEmpty()) {
+            throw new RuntimeException("No parts in Gemini response content");
+        }
+
+        for (Map<String, Object> part : parts) {
+            Map<String, Object> inlineData = (Map<String, Object>) part.get("inlineData");
+            if (inlineData != null) {
+                String b64 = (String) inlineData.get("data");
+                if (b64 != null && !b64.isBlank()) {
+                    return b64;
+                }
+            }
+        }
+
+        throw new RuntimeException("No inline image bytes returned by Gemini Flash Image API");
     }
 
     // -------------------------------------------------------
@@ -192,41 +255,130 @@ public class AIService {
     // Prompt engineering
     // -------------------------------------------------------
 
-    private String buildImagePrompt(Invitation invite) {
+    private String buildImagePrompt(Invitation invite, boolean embedInvitationText) {
         String scene = (invite.getScenePrompt() != null && !invite.getScenePrompt().isBlank())
                 ? invite.getScenePrompt()
                 : defaultSceneForEventType(invite.getEventType().name());
 
-        // Text overlay is handled by the frontend (CSS overlay)
-        // Asking Imagen to bake text is unreliable — clean scene gives better results
+        if (embedInvitationText) {
+            return buildEmbeddedCardPrompt(invite, scene);
+        }
+
         return """
                 %s.
-                
+
                 Style requirements:
                 - Beautiful invitation-quality illustration
                 - Cinematic square composition (1:1)
                 - Rich vibrant colors, warm and celebratory mood
-                - Leave some visual breathing room (sky, ground, or soft area)
-                  that can serve as a backdrop for text overlay
+                - Leave ample visual breathing room in the lower third
+                  that can serve as a soft backdrop for text overlay
                 - High-quality painterly or photorealistic style
                 - No text, watermarks, logos, or signatures
                 """.formatted(scene);
     }
 
-    private String buildTextOverlay(Invitation invite) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(invite.getEventTitle()).append("\n");
-        if (invite.getHostName() != null)
-            sb.append("Hosted by ").append(invite.getHostName()).append("\n");
-        if (invite.getEventDate() != null)
-            sb.append(invite.getEventDate()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy")));
-        if (invite.getEventTime() != null)
-            sb.append(" at ").append(invite.getEventTime()
-                    .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a"))).append("\n");
-        if (invite.getVenueName() != null)
-            sb.append(invite.getVenueName());
-        return sb.toString().trim();
+    private String buildEmbeddedCardPrompt(Invitation invite, String scene) {
+        String eventType = invite.getEventType().name();
+
+        StringBuilder detailLines = new StringBuilder();
+        if (invite.getEventDate() != null) {
+            detailLines.append("\uD83D\uDCC5 ")
+                    .append(invite.getEventDate()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy")))
+                    .append("\n");
+        }
+        if (invite.getEventTime() != null) {
+            detailLines.append("\uD83D\uDD50 ")
+                    .append(invite.getEventTime()
+                            .format(java.time.format.DateTimeFormatter.ofPattern("h:mm a")))
+                    .append("\n");
+        }
+        if (invite.getVenueName() != null && !invite.getVenueName().isBlank()) {
+            detailLines.append("\uD83D\uDCCD ").append(invite.getVenueName());
+            if (invite.getVenueAddress() != null && !invite.getVenueAddress().isBlank()) {
+                detailLines.append(", ").append(invite.getVenueAddress());
+            }
+            detailLines.append("\n");
+        }
+
+        String hostLine = (invite.getHostName() != null && !invite.getHostName().isBlank())
+                ? "Hosted by " + invite.getHostName()
+                : "";
+
+        String personalNote = (invite.getPersonalMessage() != null && !invite.getPersonalMessage().isBlank())
+                ? "\n\u201C" + invite.getPersonalMessage() + "\u201D"
+                : "";
+
+        String thematic = thematicElementsForEventType(eventType);
+        String styleGuide = styleGuideForEventType(eventType);
+
+        return """
+                Create a stunning, high-resolution printable invitation card in a perfect square (1:1) format.
+
+                VISUAL THEME:
+                %s. %s
+
+                CARD LAYOUT — three clearly defined regions:
+
+                TOP SECTION (top 25%% of card):
+                  - Decorative ribbon banner, floral arch, or themed frame along the top edge
+                  - Event title "%s" in large, bold, elegant display font — centered, highly legible
+                  - "%s" in a smaller graceful subtitle font directly below the title
+
+                CENTER ILLUSTRATION (middle 40%% of card):
+                  - Rich, detailed thematic scene: %s
+                  - Colorful balloons and celebratory confetti or petals woven naturally into the scene
+                  - Soft semi-transparent frosted panel in the lower portion of this zone
+                    to ensure the text below reads cleanly against the illustration
+
+                EVENT DETAILS PANEL (bottom 35%% of card):
+                  - Clean, well-spaced text rendered in crisp, legible fonts:
+                %s%s
+                  - Calendar, clock, and location-pin icons before each detail line
+                  - Title text in elegant serif font; values in clean modern sans-serif
+                  - Generous line spacing so details never feel cramped
+
+                OVERALL STYLE:
+                %s
+                - Warm celebratory color palette — rich jewel tones with soft pastel accents
+                - High-quality painterly or illustrated style, invitation-card quality
+                - Clean balanced layout with generous whitespace between sections
+                - No watermarks, logos, photographer credits, or extra signatures
+                """.formatted(
+                scene,
+                thematic,
+                invite.getEventTitle(),
+                hostLine,
+                thematic,
+                detailLines.toString().trim(),
+                personalNote,
+                styleGuide
+        );
+    }
+
+    private String thematicElementsForEventType(String eventType) {
+        return switch (eventType) {
+            case "BIRTHDAY"    -> "Adorable themed characters (jungle animals, cartoon figures, or fantasy creatures matching the scene) wearing party hats; colorful number centerpiece";
+            case "WEDDING"     -> "Romantic floral garlands, dove pair, intertwined rings, rose petals cascading down the sides";
+            case "PARTY"       -> "Vibrant streamers, party poppers, disco ball reflection, confetti burst in celebratory colors";
+            case "BABY_SHOWER" -> "Gentle baby animals (ducks, bunnies, elephants), soft pastel stars, tiny baby footprints, pram silhouette";
+            case "GRADUATION"  -> "Graduation cap and diploma scroll, laurel wreath, golden stars, confetti in school colors";
+            case "CORPORATE"   -> "Sleek geometric accents, subtle gold lines, modern abstract shapes, professional emblem";
+            default            -> "Festive decorative borders, colorful floral accents, celebratory ribbons";
+        };
+    }
+
+    private String styleGuideForEventType(String eventType) {
+        return switch (eventType) {
+            case "BIRTHDAY"    -> "- Bright, playful color palette; kid-friendly illustrations with soft outlines and warm tones";
+            case "WEDDING"     -> "- Soft romantic palette (ivory, blush, gold); elegant watercolor or fine-art illustration style";
+            case "PARTY"       -> "- Bold vibrant colors; energetic modern illustration with dynamic composition";
+            case "BABY_SHOWER" -> "- Soft pastel palette (mint, lavender, peach); gentle watercolor with whimsical linework";
+            case "GRADUATION"  -> "- Optimistic palette (navy, gold, white); clean sharp illustration with a sense of achievement";
+            case "CORPORATE"   -> "- Sophisticated palette (deep blue, charcoal, gold); polished semi-realistic or flat design style";
+            default            -> "- Warm celebratory palette; high-quality painterly style";
+        };
     }
 
     private String defaultSceneForEventType(String eventType) {

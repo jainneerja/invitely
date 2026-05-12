@@ -2,6 +2,7 @@ package com.invitely.controller;
 
 import com.invitely.service.AIService;
 import com.invitely.service.VideoService;
+import com.invitely.dto.GenerateImageRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -26,13 +27,16 @@ public class AIController {
     // -------------------------------------------------------
     @PostMapping("/{id}/generate-image")
     public ResponseEntity<Map<String, String>> generateImage(
-            @PathVariable UUID id) {
+            @PathVariable UUID id,
+            @RequestBody(required = false) GenerateImageRequest req) {
+        boolean embedInvitationText = req != null && Boolean.TRUE.equals(req.getEmbedInvitationText());
         log.info("Image generation requested for invite={}", id);
-        aiService.generateInviteImage(id);   // @Async — returns immediately
+        aiService.generateInviteImage(id, embedInvitationText);   // @Async — returns immediately
         return ResponseEntity.accepted()
                 .body(Map.of(
                         "message", "Image generation started",
                         "inviteId", id.toString(),
+                        "mode", embedInvitationText ? "EMBED_TEXT" : "SCENE_ONLY",
                         "pollUrl", "/api/invites/id/" + id
                 ));
     }

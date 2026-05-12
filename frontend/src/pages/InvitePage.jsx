@@ -23,8 +23,8 @@ export default function InvitePage() {
   if (loading) return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: '#0f0a2e',
-      color: 'rgba(255,255,255,0.5)', fontSize: 14,
+      justifyContent: 'center', background: '#faf7f2',
+      color: '#9c8a7a', fontSize: 14,
     }}>
       Loading your invitation...
     </div>
@@ -33,187 +33,148 @@ export default function InvitePage() {
   if (error) return (
     <div style={{
       minHeight: '100vh', display: 'flex', alignItems: 'center',
-      justifyContent: 'center', background: 'var(--bg)',
+      justifyContent: 'center', background: '#faf7f2',
       flexDirection: 'column', gap: 12,
     }}>
       <div style={{ fontSize: 36 }}>😔</div>
-      <div style={{ color: 'var(--text-2)' }}>{error}</div>
+      <div style={{ color: '#9c8a7a' }}>{error}</div>
     </div>
   )
 
-  const bg = invite.animatedVideoUrl || invite.generatedImageUrl
+  const hasEmbeddedText = invite.embedTextInImage === true
+  const mediaUrl = invite.animatedVideoUrl || invite.generatedImageUrl
 
   return (
-    <div style={{ minHeight: '100vh', background: '#0f0a2e' }}>
-      {/* Hero — full-screen video or image */}
+    <div style={{ minHeight: '100vh', background: '#faf7f2' }}>
+
+      {/* ── Card ── */}
       <div style={{
-        position: 'relative', minHeight: '100vh',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        padding: '2rem 1rem 0',
       }}>
-        {/* Background media */}
-        {invite.animatedVideoUrl ? (
-          <video
-            src={invite.animatedVideoUrl}
-            autoPlay loop muted playsInline
-            style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%',
-              objectFit: 'cover', opacity: 0.85,
-            }}
-          />
-        ) : invite.generatedImageUrl ? (
-          <img
-            src={invite.generatedImageUrl}
-            alt={invite.eventTitle}
-            style={{
-              position: 'absolute', inset: 0,
-              width: '100%', height: '100%',
-              objectFit: 'cover', opacity: 0.85,
-            }}
-          />
-        ) : (
-          <div style={{
-            position: 'absolute', inset: 0,
-            background: 'linear-gradient(160deg,#0f0a2e,#1e1245,#2d1f5e)',
-          }} />
-        )}
-
-        {/* Gradient overlay */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%)',
-        }} />
-
-        {/* Content */}
         <motion.div
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 24 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
+          transition={{ duration: 0.6 }}
           style={{
-            position: 'relative', zIndex: 1,
-            textAlign: 'center', padding: '2rem',
-            maxWidth: 560,
+            width: '100%', maxWidth: 480,
+            borderRadius: 20, overflow: 'hidden',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
+            background: '#fff',
           }}
         >
-          <motion.h1
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            style={{
-              fontSize: 38, fontWeight: 600, color: '#EF9F27',
-              fontFamily: "'Playfair Display', serif",
-              textShadow: '0 2px 16px rgba(0,0,0,0.5)',
-              marginBottom: 8,
-            }}
-          >
-            {invite.eventTitle}
-          </motion.h1>
+          {/* Media — contained, never cropped */}
+          {invite.animatedVideoUrl ? (
+            <video
+              src={invite.animatedVideoUrl}
+              autoPlay loop muted playsInline
+              style={{ width: '100%', display: 'block', aspectRatio: '1/1', objectFit: 'cover' }}
+            />
+          ) : invite.generatedImageUrl ? (
+            <img
+              src={invite.generatedImageUrl}
+              alt={invite.eventTitle}
+              style={{ width: '100%', display: 'block' }}
+            />
+          ) : (
+            <div style={{
+              aspectRatio: '1/1', width: '100%',
+              background: 'linear-gradient(160deg,#1e1245,#2d1f5e,#1a3a2a)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'rgba(255,255,255,0.3)', fontSize: 13,
+            }}>
+              No image yet
+            </div>
+          )}
 
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            style={{ color: 'rgba(255,255,255,0.75)', fontSize: 15, marginBottom: 24 }}
-          >
-            Hosted by <strong style={{ color: '#fff' }}>{invite.hostName}</strong>
-          </motion.p>
-
-          {/* Event details chips */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.7 }}
-            style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}
-          >
-            {[
-              { icon: Calendar, text: invite.eventDate
-                  ? format(new Date(invite.eventDate), 'MMMM d, yyyy') : null },
-              { icon: Clock,    text: invite.eventTime },
-              { icon: MapPin,   text: invite.venueName },
-            ].filter((d) => d.text).map((d) => (
-              <div key={d.text} style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(8px)',
-                borderRadius: 99, padding: '6px 14px',
-                fontSize: 13, color: 'rgba(255,255,255,0.9)',
-                border: '1px solid rgba(255,255,255,0.15)',
-              }}>
-                <d.icon size={13} />
-                {d.text}
-              </div>
-            ))}
-          </motion.div>
-
-          {/* Personal message */}
-          {invite.personalMessage && (
-            <motion.p
+          {/* Details panel — only shown when text is NOT embedded in image */}
+          {!hasEmbeddedText && (
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 0.9 }}
-              style={{
-                marginTop: 24, fontSize: 14, color: 'rgba(255,255,255,0.65)',
-                fontStyle: 'italic', lineHeight: 1.6,
-                maxWidth: 420, margin: '24px auto 0',
-              }}
+              transition={{ delay: 0.3 }}
+              style={{ padding: '1.5rem 1.5rem 1.25rem', background: '#fff' }}
             >
-              "{invite.personalMessage}"
-            </motion.p>
+              <h1 style={{
+                fontSize: 24, fontWeight: 700, color: '#1a1a1a',
+                fontFamily: "'Playfair Display', serif",
+                margin: '0 0 4px',
+              }}>
+                {invite.eventTitle}
+              </h1>
+              <p style={{ fontSize: 14, color: '#666', margin: '0 0 16px' }}>
+                Hosted by <strong style={{ color: '#333' }}>{invite.hostName}</strong>
+              </p>
+
+              {/* Chips */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: invite.personalMessage ? 16 : 0 }}>
+                {[
+                  { icon: Calendar, text: invite.eventDate
+                      ? format(new Date(invite.eventDate), 'MMMM d, yyyy') : null },
+                  { icon: Clock,    text: invite.eventTime },
+                  { icon: MapPin,   text: invite.venueName },
+                ].filter(d => d.text).map(d => (
+                  <div key={d.text} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    background: '#f5f0eb', borderRadius: 99,
+                    padding: '5px 12px', fontSize: 12, color: '#555',
+                    border: '1px solid #e8e0d8',
+                  }}>
+                    <d.icon size={12} color="#9c7c5a" />
+                    {d.text}
+                  </div>
+                ))}
+              </div>
+
+              {invite.personalMessage && (
+                <p style={{
+                  fontSize: 13, color: '#7a6a5a', fontStyle: 'italic',
+                  lineHeight: 1.6, margin: 0,
+                  borderTop: '1px solid #f0e8e0', paddingTop: 14,
+                }}>
+                  "{invite.personalMessage}"
+                </p>
+              )}
+            </motion.div>
           )}
         </motion.div>
 
-        {/* Scroll indicator */}
+        {/* ── RSVP ── */}
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          style={{
-            position: 'absolute', bottom: 32, zIndex: 1,
-            color: 'rgba(255,255,255,0.4)', fontSize: 12,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-          }}
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          style={{ width: '100%', maxWidth: 480, padding: '1.5rem 0 2rem' }}
         >
-          <span>RSVP below</span>
-          <motion.div
-            animate={{ y: [0, 6, 0] }}
-            transition={{ repeat: Infinity, duration: 1.5 }}
-          >↓</motion.div>
+          {rsvpDone ? (
+            <div style={{
+              textAlign: 'center', background: '#fff',
+              borderRadius: 16, padding: '2rem',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.07)',
+            }}>
+              <div style={{ fontSize: 40, marginBottom: 12 }}>🎉</div>
+              <h3 style={{ fontSize: 18, fontWeight: 600, margin: '0 0 6px', color: '#1a1a1a' }}>
+                You're all set!
+              </h3>
+              <p style={{ fontSize: 13, color: '#888', margin: 0 }}>
+                Your RSVP has been recorded. See you there!
+              </p>
+            </div>
+          ) : (
+            <RsvpForm
+              slug={slug}
+              rsvpDeadline={invite.rsvpDeadline}
+              onSuccess={() => setRsvpDone(true)}
+            />
+          )}
         </motion.div>
       </div>
 
-      {/* RSVP section */}
-      <div style={{
-        background: 'var(--bg)', padding: '3rem 2rem',
-        display: 'flex', justifyContent: 'center',
-      }}>
-        {rsvpDone ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            style={{ textAlign: 'center', maxWidth: 400 }}
-          >
-            <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-            <h3 style={{ fontSize: 20, fontWeight: 600, marginBottom: 8 }}>
-              You're all set!
-            </h3>
-            <p style={{ fontSize: 14, color: 'var(--text-2)' }}>
-              Your RSVP has been recorded. See you there!
-            </p>
-          </motion.div>
-        ) : (
-          <RsvpForm
-            slug={slug}
-            rsvpDeadline={invite.rsvpDeadline}
-            onSuccess={() => setRsvpDone(true)}
-          />
-        )}
-      </div>
-
-      {/* Invitely watermark */}
+      {/* Watermark */}
       <div style={{
         textAlign: 'center', padding: '1rem',
-        background: 'var(--surface)', borderTop: '1px solid var(--border)',
-        fontSize: 11, color: 'var(--text-3)',
+        borderTop: '1px solid #ede6dc',
+        fontSize: 11, color: '#bbb', background: '#faf7f2',
       }}>
         Made with <span className="gradient-text" style={{ fontWeight: 600 }}>invitely</span>
       </div>

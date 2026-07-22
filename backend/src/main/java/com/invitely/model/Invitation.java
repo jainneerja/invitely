@@ -122,6 +122,6 @@ public class Invitation {
     }
 
     public enum InviteStatus {
-        DRAFT, IMAGE_PENDING, IMAGE_READY, VIDEO_PENDING, PUBLISHED
+        DRAFT, IMAGE_PENDING, IMAGE_READY, VIDEO_PENDING, PUBLISHED, FAILED
     }
 }

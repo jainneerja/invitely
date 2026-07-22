@@ -3,11 +3,13 @@ package com.invitely.config;
 import com.google.auth.oauth2.GoogleCredentials;
 import org.springframework.ai.vertexai.gemini.VertexAiGeminiChatOptions;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
+import java.time.Duration;
 
 @Configuration
 public class SpringAIConfig {
@@ -24,9 +26,15 @@ public class SpringAIConfig {
                 .createScoped("https://www.googleapis.com/auth/cloud-platform");
     }
 
+    // Explicit timeouts: a hung Imagen call must not pin an async thread (and,
+    // pre-fix, a DB connection) indefinitely. Read timeout is generous because
+    // image generation is slow, but finite. See issue #2.
     @Bean(name = "vertexRestTemplate")
-    public RestTemplate vertexRestTemplate() {
-        return new RestTemplate();
+    public RestTemplate vertexRestTemplate(RestTemplateBuilder builder) {
+        return builder
+                .setConnectTimeout(Duration.ofSeconds(10))
+                .setReadTimeout(Duration.ofSeconds(60))
+                .build();
     }
 
     @Bean

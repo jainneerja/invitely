@@ -4,7 +4,6 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.invitely.kafka.InviteEventProducer;
 import com.invitely.model.Asset.AssetType;
 import com.invitely.model.Invitation;
-import com.invitely.model.Invitation.InviteStatus;
 import com.invitely.repository.InvitationRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.model.ChatModel;
@@ -15,7 +14,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
@@ -29,6 +27,7 @@ import java.util.UUID;
 public class AIService {
 
     private final InvitationRepository invitationRepository;
+    private final InviteStatusService statusService;
     private final AssetService assetService;
     private final InviteEventProducer eventProducer;
     private final GoogleCredentials googleCredentials;
@@ -46,12 +45,14 @@ public class AIService {
     // Explicit constructor — avoids @RequiredArgsConstructor conflict with @Qualifier
     public AIService(
             InvitationRepository invitationRepository,
+            InviteStatusService statusService,
             AssetService assetService,
             InviteEventProducer eventProducer,
             GoogleCredentials googleCredentials,
             ChatModel chatModel,
             @Qualifier("vertexRestTemplate") RestTemplate vertexRestTemplate) {
         this.invitationRepository = invitationRepository;
+        this.statusService        = statusService;
         this.assetService         = assetService;
         this.eventProducer        = eventProducer;
         this.googleCredentials    = googleCredentials;
@@ -63,39 +64,42 @@ public class AIService {
     // Generate image — async, status polling driven
     // -------------------------------------------------------
 
+    // NOTE: deliberately NOT @Transactional. This method runs on an async thread
+    // and makes a slow external call (Imagen). Wrapping it in a transaction would
+    // hold a DB connection for the whole call. Instead, each status write is a
+    // short transaction on InviteStatusService (a separate bean, so the proxy is
+    // actually crossed — see that class and issue #2). Because the PENDING write
+    // now commits before the external call, clients can observe it while polling.
     @Async
-    @Transactional
     public void generateInviteImage(UUID inviteId) {
+        // Read the fields we need in one short read-only unit, then release.
         Invitation invite = invitationRepository.findById(inviteId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Invitation not found: " + inviteId));
+        String prompt = buildImagePrompt(invite);
+        String slug = invite.getSlug();
 
         log.info("Starting image generation for invite={}", inviteId);
-
-        invite.setStatus(InviteStatus.IMAGE_PENDING);
-        invitationRepository.save(invite);
+        statusService.markImagePending(inviteId);   // tx 1 — commits, now visible
 
         try {
-            String prompt = buildImagePrompt(invite);
             log.debug("Imagen prompt: {}", prompt);
-
-            String b64Image = callImagenApi(prompt);
+            String b64Image = callImagenApi(prompt);              // no tx held here
 
             String imageUrl = assetService.storeBase64Image(
                     inviteId, b64Image, "image/png", AssetType.AI_GENERATED_IMAGE);
 
-            invite.setGeneratedImageUrl(imageUrl);
-            invite.setStatus(InviteStatus.IMAGE_READY);
-            invitationRepository.save(invite);
-
-            eventProducer.imageReady(inviteId, invite.getSlug(), imageUrl);
+            statusService.markImageReady(inviteId, imageUrl);     // tx 2
+            eventProducer.imageReady(inviteId, slug, imageUrl);
             log.info("Image generated successfully. invite={} url={}", inviteId, imageUrl);
 
         } catch (Exception e) {
+            // Land a durable FAILED state (tx 3) instead of rolling the write back.
+            // Do NOT rethrow: this is an @Async void method, so an exception would
+            // only reach SimpleAsyncUncaughtExceptionHandler and be logged with no
+            // effect on state. The FAILED write is the signal the frontend polls for.
             log.error("Image generation failed for invite={}", inviteId, e);
-            invite.setStatus(InviteStatus.DRAFT);
-            invitationRepository.save(invite);
-            throw new RuntimeException("Image generation failed: " + e.getMessage(), e);
+            statusService.markFailed(inviteId, e.getMessage());
         }
     }
 

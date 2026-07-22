@@ -2,10 +2,12 @@ package com.invitely.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +24,12 @@ public class EmailService {
     @Value("${invitely.base-url}")
     private String baseUrl;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    // Finite timeouts so a hung SendGrid call cannot block the Kafka consumer
+    // thread indefinitely. See issue #2.
+    private final RestTemplate restTemplate = new RestTemplateBuilder()
+            .setConnectTimeout(Duration.ofSeconds(5))
+            .setReadTimeout(Duration.ofSeconds(15))
+            .build();
     private static final String SENDGRID_URL = "https://api.sendgrid.com/v3/mail/send";
 
     // -------------------------------------------------------

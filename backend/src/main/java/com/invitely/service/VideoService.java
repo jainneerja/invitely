@@ -2,14 +2,12 @@ package com.invitely.service;
 
 import com.invitely.model.Asset.AssetType;
 import com.invitely.model.Invitation;
-import com.invitely.model.Invitation.InviteStatus;
 import com.invitely.repository.InvitationRepository;
 import com.invitely.service.video.VideoGenerationProvider;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.NoSuchElementException;
 import java.util.UUID;
@@ -21,6 +19,7 @@ public class VideoService {
 
     private final VideoGenerationProvider videoProvider;
     private final InvitationRepository invitationRepository;
+    private final InviteStatusService statusService;
     private final AssetService assetService;
 
     private static final int MAX_POLL_ATTEMPTS = 30;
@@ -30,14 +29,19 @@ public class VideoService {
     // Submit animation job — async, runs in background
     // -------------------------------------------------------
 
+    // NOT @Transactional. This method polls the provider for up to
+    // MAX_POLL_ATTEMPTS * POLL_INTERVAL_MS (~5 min); a transaction here would pin
+    // a Hikari connection for that entire window and could exhaust the pool,
+    // taking down unrelated endpoints. Status writes go through InviteStatusService
+    // (short, independent transactions). See issue #2.
     @Async
-    @Transactional
     public void animateInviteImage(UUID inviteId) {
         Invitation invite = invitationRepository.findById(inviteId)
                 .orElseThrow(() -> new NoSuchElementException(
                         "Invitation not found: " + inviteId));
 
-        if (invite.getGeneratedImageUrl() == null) {
+        String imageUrl = invite.getGeneratedImageUrl();
+        if (imageUrl == null) {
             throw new IllegalStateException(
                     "Cannot animate — no generated image found for invite: " + inviteId);
         }
@@ -45,42 +49,31 @@ public class VideoService {
         log.info("[VIDEO] Starting animation for invite={} provider={}",
                 inviteId, videoProvider.providerName());
 
-        invite.setStatus(InviteStatus.VIDEO_PENDING);
-        invitationRepository.save(invite);
+        String animationPrompt = buildAnimationPrompt(invite);
+        statusService.markVideoPending(inviteId);
 
         try {
-            String animationPrompt = buildAnimationPrompt(invite);
-
-            // Submit to provider (Kling, Runway, or stub)
-            String jobId = videoProvider.submitAnimationJob(
-                    invite.getGeneratedImageUrl(),
-                    animationPrompt,
-                    6   // 6 second video
-            );
-
+            String jobId = videoProvider.submitAnimationJob(imageUrl, animationPrompt, 6);
             log.info("[VIDEO] Job submitted. jobId={} invite={}", jobId, inviteId);
 
-            // Poll until complete
-            String videoUrl = pollUntilComplete(jobId, inviteId);
+            String videoUrl = pollUntilComplete(jobId, inviteId);   // no tx held
 
             if (videoUrl != null) {
-                // Store asset record
                 assetService.storeVideoAsset(inviteId, videoUrl, AssetType.AI_ANIMATED_VIDEO);
-
-                invite.setAnimatedVideoUrl(videoUrl);
-                invite.setStatus(InviteStatus.IMAGE_READY);   // ready to publish
-                invitationRepository.save(invite);
-
+                statusService.markVideoReady(inviteId, videoUrl);   // back to IMAGE_READY
                 log.info("[VIDEO] Animation complete. invite={} url={}", inviteId, videoUrl);
             } else {
-                throw new RuntimeException("Video generation timed out after max poll attempts");
+                // Timeout: the invite still has a valid static image, so fall back to
+                // IMAGE_READY (publishable) rather than FAILED. Video is optional.
+                log.warn("[VIDEO] Timed out; keeping static image. invite={}", inviteId);
+                statusService.markVideoUnavailable(inviteId);
             }
 
         } catch (Exception e) {
+            // Same fallback: a failed animation must not strand a publishable invite.
+            // No rethrow — @Async void, so it would only be logged anyway.
             log.error("[VIDEO] Animation failed for invite={}", inviteId, e);
-            invite.setStatus(InviteStatus.IMAGE_READY);   // fall back — still has static image
-            invitationRepository.save(invite);
-            throw new RuntimeException("Video animation failed: " + e.getMessage(), e);
+            statusService.markVideoUnavailable(inviteId);
         }
     }
 

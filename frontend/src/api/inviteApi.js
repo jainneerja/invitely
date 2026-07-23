@@ -46,8 +46,8 @@ export const deleteInvite = (id) =>
 // AI generation
 // -------------------------------------------------------
 
-export const generateImage = (id) =>
-  api.post(`/invites/${id}/generate-image`)
+export const generateImage = (id, embedText = false) =>
+  api.post(`/invites/${id}/generate-image`, null, { params: { embedText } })
 
 export const animateImage = (id) =>
   api.post(`/invites/${id}/animate`)

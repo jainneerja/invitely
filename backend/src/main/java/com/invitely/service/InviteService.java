@@ -281,6 +281,7 @@ public class InviteService {
                 .generatedImageUrl(invite.getGeneratedImageUrl())
                 .animatedVideoUrl(invite.getAnimatedVideoUrl())
                 .animationStyle(invite.getAnimationStyle())
+                .embedTextInImage(invite.isEmbedTextInImage())
                 .status(invite.getStatus())
                 .rsvpDeadline(invite.getRsvpDeadline())
                 .maxGuests(invite.getMaxGuests())

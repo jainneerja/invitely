@@ -68,6 +68,12 @@ public class Invitation {
     @Builder.Default
     private String animationStyle = "animals_walk";
 
+    // When true, the AI baked the invitation text (title, date, venue) directly
+    // into the generated image, so the frontend must NOT render its text overlay.
+    @Column(name = "embed_text_in_image", nullable = false)
+    @Builder.Default
+    private boolean embedTextInImage = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "template_id")
     private Template template;

@@ -38,10 +38,16 @@ public class InviteStatusService {
 
     @Transactional
     public void markImageReady(UUID inviteId, String imageUrl) {
+        markImageReady(inviteId, imageUrl, false);
+    }
+
+    @Transactional
+    public void markImageReady(UUID inviteId, String imageUrl, boolean embedTextInImage) {
         Invitation invite = require(inviteId);
         invite.setGeneratedImageUrl(imageUrl);
+        invite.setEmbedTextInImage(embedTextInImage);
         invite.setStatus(InviteStatus.IMAGE_READY);
-        log.info("Invite {} -> IMAGE_READY", inviteId);
+        log.info("Invite {} -> IMAGE_READY (embedText={})", inviteId, embedTextInImage);
     }
 
     @Transactional

@@ -50,7 +50,29 @@ export default function InvitePage() {
         position: 'relative', minHeight: '100vh',
         display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center',
+        // Own dark background so the letterbox around a contained card never
+        // falls through to the light body background (--bg #F3F3F0).
+        background: '#0f0a2e',
       }}>
+        {/* Deep ambient backdrop for contained (baked-in) cards: a heavily
+            darkened blur of the card, plus a dark scrim so it stays a rich dark
+            field (a lightbox look) regardless of how light the card artwork is */}
+        {invite.embedTextInImage && invite.generatedImageUrl && (
+          <>
+            <div style={{
+              position: 'absolute', inset: 0,
+              backgroundImage: `url(${invite.generatedImageUrl})`,
+              backgroundSize: 'cover', backgroundPosition: 'center',
+              filter: 'blur(48px) brightness(0.32) saturate(1.2)',
+              transform: 'scale(1.2)',
+            }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: 'rgba(10, 6, 30, 0.55)',
+            }} />
+          </>
+        )}
+
         {/* Background media */}
         {invite.animatedVideoUrl ? (
           <video
@@ -59,7 +81,8 @@ export default function InvitePage() {
             style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%',
-              objectFit: 'cover', opacity: 0.85,
+              objectFit: invite.embedTextInImage ? 'contain' : 'cover',
+              opacity: invite.embedTextInImage ? 1 : 0.85,
             }}
           />
         ) : invite.generatedImageUrl ? (
@@ -69,7 +92,10 @@ export default function InvitePage() {
             style={{
               position: 'absolute', inset: 0,
               width: '100%', height: '100%',
-              objectFit: 'cover', opacity: 0.85,
+              // Baked-in cards: show the WHOLE card (contain) at full opacity.
+              // Scene-only images: fill the hero (cover) and dim for overlay text.
+              objectFit: invite.embedTextInImage ? 'contain' : 'cover',
+              opacity: invite.embedTextInImage ? 1 : 0.85,
             }}
           />
         ) : (
@@ -79,13 +105,16 @@ export default function InvitePage() {
           }} />
         )}
 
-        {/* Gradient overlay */}
-        <div style={{
-          position: 'absolute', inset: 0,
-          background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%)',
-        }} />
+        {/* Gradient overlay — skipped for baked-in cards so their text isn't dimmed */}
+        {!invite.embedTextInImage && (
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.7) 100%)',
+          }} />
+        )}
 
-        {/* Content */}
+        {/* Content — suppressed when the AI baked the text into the image */}
+        {!invite.embedTextInImage && (
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -161,6 +190,7 @@ export default function InvitePage() {
             </motion.p>
           )}
         </motion.div>
+        )}
 
         {/* Scroll indicator */}
         <motion.div

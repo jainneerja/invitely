@@ -30,6 +30,7 @@ export default function StepScene() {
   const [animLoading, setAnimLoading] = useState(false)
   const [imageUrl, setImageUrl]       = useState(createdInvite?.generatedImageUrl || null)
   const [videoUrl, setVideoUrl]       = useState(createdInvite?.animatedVideoUrl || null)
+  const [embedText, setEmbedText]     = useState(createdInvite?.embedTextInImage || false)
 
   const handleGenerate = async () => {
     if (!form.scenePrompt.trim()) {
@@ -44,8 +45,8 @@ export default function StepScene() {
         animationStyle: form.animationStyle,
       })
 
-      // Trigger async generation
-      await generateImage(createdInvite.id)
+      // Trigger async generation (embedText bakes invite details into the image)
+      await generateImage(createdInvite.id, embedText)
       toast('Generating your scene...', { icon: '✨' })
 
       // Poll until IMAGE_READY
@@ -137,6 +138,40 @@ export default function StepScene() {
               </button>
             </div>
           </div>
+
+          {/* Embed-text toggle */}
+          <button
+            type="button"
+            onClick={() => setEmbedText((v) => !v)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginTop: 12,
+              width: '100%', textAlign: 'left', cursor: 'pointer',
+              background: embedText ? 'var(--purple-lt)' : 'var(--surface-2)',
+              border: `1px solid ${embedText ? 'var(--pink)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-md)', padding: '10px 12px',
+              transition: 'all 0.15s',
+            }}
+          >
+            <div style={{
+              width: 34, height: 20, borderRadius: 99, flexShrink: 0,
+              background: embedText ? 'var(--pink)' : 'var(--border-2)',
+              position: 'relative', transition: 'background 0.15s',
+            }}>
+              <div style={{
+                position: 'absolute', top: 2, left: embedText ? 16 : 2,
+                width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.15s',
+              }} />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-1)' }}>
+                Bake invite details into the image
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-3)' }}>
+                AI writes the title, date &amp; venue onto the artwork itself
+              </div>
+            </div>
+          </button>
 
           {/* Prompt suggestions */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>

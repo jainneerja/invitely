@@ -11,7 +11,7 @@ spring:
 # Local file storage — images saved to uploads/ folder
 invitely:
   base-url: http://localhost:3000
-  asset-storage-path: D:/Project/invitely/backend/uploads
+  asset-storage-path: uploads
 
 # Kafka disabled in dev
 kafka:

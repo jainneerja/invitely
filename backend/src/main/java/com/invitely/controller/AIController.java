@@ -26,9 +26,10 @@ public class AIController {
     // -------------------------------------------------------
     @PostMapping("/{id}/generate-image")
     public ResponseEntity<Map<String, String>> generateImage(
-            @PathVariable UUID id) {
-        log.info("Image generation requested for invite={}", id);
-        aiService.generateInviteImage(id);   // @Async — returns immediately
+            @PathVariable UUID id,
+            @RequestParam(name = "embedText", defaultValue = "false") boolean embedText) {
+        log.info("Image generation requested for invite={} embedText={}", id, embedText);
+        aiService.generateInviteImage(id, embedText);   // @Async — returns immediately
         return ResponseEntity.accepted()
                 .body(Map.of(
                         "message", "Image generation started",

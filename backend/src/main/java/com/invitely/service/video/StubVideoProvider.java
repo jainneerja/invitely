@@ -14,9 +14,10 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class StubVideoProvider implements VideoGenerationProvider {
 
-    // A royalty-free sample animated clip for demo purposes
+    // A royalty-free sample animated clip for demo purposes.
+    // (The old gtv-videos-bucket sample now returns 403; this one is stable.)
     private static final String SAMPLE_VIDEO_URL =
-            "https://storage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4";
+            "https://www.w3schools.com/html/mov_bbb.mp4";
 
     @Override
     public String submitAnimationJob(String imageUrl,
